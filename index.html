@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PointmapVLA: Scaling Robot Learning with Robot-Centric Pointmaps</title>
+  <meta name="description" content="PointmapVLA combines RGB images with robot-centric pointmaps and learns from both robot demonstrations and 3D spatial VQA to connect geometric understanding with robot control.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232ea24c'/%3E%3Cg fill='white'%3E%3Ccircle cx='10' cy='22' r='2.6'/%3E%3Ccircle cx='16' cy='14' r='2.6'/%3E%3Ccircle cx='22' cy='19' r='2.6'/%3E%3Ccircle cx='21' cy='9' r='2.6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="static/css/style.css">
+  <link rel="stylesheet" href="static/css/components.css">
+  <link rel="stylesheet" href="static/css/observations.css">
+  <style>
+    /* page-specific additions on top of the shared FlashDexRetarget-derived system */
+    .hero .motto { margin: 16px auto 0; font-size: clamp(18px, 2.3vw, 24px); font-weight: 800; letter-spacing: -0.01em; color: var(--accent-ink); }
+    .hero .blurb { margin: 14px auto 0; max-width: 800px; font-size: 17px; color: #3a4349; }
+    .gap-fig { display: grid; grid-template-columns: minmax(0, 2.2fr) 40px minmax(0, 1fr) 40px minmax(0, 1.2fr); align-items: center; gap: 10px; margin-top: 22px; padding: 22px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); }
+    .gap-h { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; text-align: center; }
+    .gap-imgs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .gap-imgs img { width: 100%; aspect-ratio: 1; border-radius: 8px; background: #eee; display: block; }
+    .gap-note { margin-top: 10px; font-size: 14px; color: #3a4349; text-align: center; line-height: 1.45; }
+    .gap-vla { text-align: center; padding: 22px 10px; border-radius: var(--radius); background: var(--ink, #1d2327); color: #fff; font-size: 24px; font-weight: 800; }
+    .gap-vla small { display: block; margin-top: 6px; font-size: 12.5px; font-weight: 400; opacity: 0.8; line-height: 1.4; }
+    .gap-arrow { height: 2px; background: var(--muted); position: relative; }
+    .gap-arrow::after { content: ""; position: absolute; right: -2px; top: -5px; border: 6px solid transparent; border-left: 9px solid var(--muted); border-right: 0; }
+    .gap-out svg { display: block; width: 100%; max-width: 200px; margin: 0 auto; }
+    @media (max-width: 760px) { .gap-fig { grid-template-columns: 1fr; padding: 16px; } .gap-arrow { width: 2px; height: 26px; margin: 0 auto; } .gap-arrow::after { right: -5px; top: auto; bottom: -2px; border: 6px solid transparent; border-top: 9px solid var(--muted); border-bottom: 0; } }
+    /* section 1 diagram (InternVLA-A1.5 model-figure style), static/js/pm-vla-diagram.js */
+    .pvd, .pvd * { box-sizing: border-box; }
+    .pvd { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 24px 26px 18px; margin-top: 22px; }
+    .pvd-pause { position: absolute; right: 16px; top: 14px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 11px; cursor: pointer; z-index: 2; }
+    .pvd-fig { position: relative; display: grid; grid-template-columns: 158px minmax(130px, 170px) auto minmax(0, 1fr); gap: 0 58px; align-items: center; padding: 8px 2px 6px; }
+    .pvd-ar { display: none; }
+    .pvd-in { display: flex; flex-direction: column; gap: 14px; }
+    .pvd-cam { border: 1.5px solid var(--line); border-radius: 14px; background: #fff; padding: 8px 8px 7px; transition: all .35s; }
+    .pvd-cam .hd { display: flex; align-items: center; gap: 7px; font-size: 13.5px; margin: 0 2px 7px; color: var(--ink); }
+    .pvd-cam .vw { position: relative; }
+    .pvd-cam video { display: block; width: 100%; border-radius: 8px; background: #f2f2f2; }
+    .pvd-cam .cl { position: absolute; left: 6px; font-size: 10.5px; font-weight: 700; color: #fff; padding: 1px 6px; border-radius: 5px; }
+    .pvd-cam .cl.c0 { background: rgba(46,125,224,.9); } .pvd-cam .cl.c1 { background: rgba(18,166,148,.9); } .pvd-cam .cl.c2 { background: rgba(214,115,26,.9); }
+    .pvd-cam .ft { display: flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .pvd-cam .rec { width: 8px; height: 8px; border-radius: 50%; background: #e03131; animation: pvd-rec 1.2s ease-in-out infinite; flex: none; }
+    .pvd-cam .bar { flex: 1; height: 3px; border-radius: 2px; background: #eceaf3; overflow: hidden; } .pvd-cam .bar i { display: block; height: 100%; background: var(--accent); }
+    @keyframes pvd-rec { 50% { opacity: .25; } }
+    .pvd-pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; color: var(--muted); font-size: 14px; transition: all .35s; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .pvd-pill b { font-weight: 700; color: inherit; }
+    .pvd-pill.txt { flex-direction: column; align-items: flex-start; gap: 1px; border-radius: 14px; }
+    .pvd-pill.txt small { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+    .pvd-pill.out { flex-direction: column; gap: 6px; border-radius: 14px; padding: 10px 14px; }
+    .pvd-cam.on, .pvd-pill.on { color: var(--ink); border-color: #c4b5fd; box-shadow: 0 0 0 4px var(--accent-soft), 0 4px 14px rgba(109,40,217,.12); }
+    .pvd .tag { font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: .04em; padding: 1px 7px; border-radius: 6px; background: #eef0f3; color: #5a646b; }
+    .pvd .tag.d3 { background: #fdf0f8; color: #b0177f; }
+    .pvd-pill.out .chips { display: inline-flex; gap: 3px; }
+    .pvd-pill.out .chips i { font-style: normal; font-family: "Times New Roman", serif; font-weight: 700; font-size: 13.5px; padding: 0 6px; border-radius: 5px; background: #f1eef8; color: #9a93ad; transition: all .2s; }
+    .pvd-pill.out .chips i.lit { background: #c51f99; color: #fff; }
+    .pvd-box { height: 150px; display: flex; flex-direction: column; justify-content: center; border: 1.5px solid #d9d4ea; border-radius: 16px; background: #faf9fe; text-align: center; transition: all .35s; }
+    .pvd-box.on { border-color: #a78bfa; background: #f3efff; box-shadow: 0 0 0 4px var(--accent-soft), 0 8px 24px rgba(109,40,217,.14); }
+    .pvd-box .ttl { font-size: 26px; font-weight: 800; color: var(--ink); }
+    .pvd-box .sub { font-size: 12px; color: var(--muted); padding: 0 10px; }
+    .pvd-world { align-self: center; display: flex; flex-direction: column; border: 1.5px solid var(--line); border-radius: 14px; background: #fcfcfe; padding: 10px 12px 6px; transition: all .35s; opacity: .55; }
+    .pvd-world.on { opacity: 1; border-color: #f0a6d6; box-shadow: 0 0 0 4px #fdf0f8; }
+    .pvd-world .hd { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); }
+    .pvd-world svg { display: block; width: 100%; height: auto; }
+    .pvd-world .g { stroke: #e3e5ea; stroke-width: 1; }
+    .pvd-world .ax { stroke-width: 2.5; stroke-linecap: round; } .pvd-world .ax.x { stroke: #e03131; } .pvd-world .ax.y { stroke: #2f9e44; } .pvd-world .ax.z { stroke: #1c7ed6; }
+    .pvd-world .org { fill: #1b2024; } .pvd-world .lb { font-size: 11px; fill: #5a646b; font-weight: 600; } .pvd-world .lb.s { font-weight: 400; }
+    .pvd-world .ghost { fill: none; stroke: #f1d5e8; stroke-width: 2; stroke-dasharray: 3 4; }
+    .pvd-world .trail { fill: none; stroke: #c51f99; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+    .pvd-world .drop { stroke: #c51f99; stroke-width: 1; stroke-dasharray: 2 3; }
+    .pvd-world .grip { fill: #fff; stroke: #c51f99; stroke-width: 3; }
+    .pvd-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; color: #c9c5d6; }
+    .pvd-wires .wire { fill: none; stroke: #d3cfe0; stroke-width: 1.6; stroke-dasharray: 5 5; transition: stroke .3s; }
+    .pvd-wires .wire.on { stroke: var(--accent); stroke-width: 2; animation: pvd-flow .6s linear infinite; }
+    .pvd-wires .wire#w-world.on { stroke: #c51f99; }
+    @keyframes pvd-flow { to { stroke-dashoffset: -10; } }
+    .pvd-steps { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+    .pvd-steps .chip { font: 700 13px "Open Sans", sans-serif; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: #8a8f98; cursor: pointer; transition: all .3s; }
+    .pvd-steps .chip i { font-style: normal; margin-right: 6px; opacity: .8; }
+    .pvd-steps .chip.on { color: var(--accent-ink); border-color: #c4b5fd; background: var(--accent-soft); }
+    .pvd-steps .chip.done { color: #6b6280; }
+    .pvd-capt { margin: 10px 0 0; font-size: 15px; color: #5a646b; min-height: 46px; }
+    .pvd-capt b { color: var(--ink); margin-right: 4px; }
+    .pvd.stack .pvd-fig { grid-template-columns: minmax(0, 1fr); gap: 0; justify-items: center; }
+    .pvd.stack .pvd-in { flex-direction: row; align-items: center; width: 100%; } .pvd.stack .pvd-cam { width: 46%; flex: none; } .pvd.stack .pvd-pill.txt { flex: 1; min-width: 0; }
+    .pvd.stack .pvd-box { width: 70%; height: 92px; } .pvd.stack .pvd-world { width: 100%; }
+    .pvd.stack .pvd-ar { display: block; width: 2px; height: 26px; background: #c4b5fd; position: relative; margin: 6px 0 10px; }
+    .pvd.stack .pvd-ar::after { content: ""; position: absolute; left: -5px; bottom: -6px; border: 6px solid transparent; border-top: 8px solid #c4b5fd; border-bottom: 0; }
+    @media (max-width: 760px) { .pvd { padding: 18px 12px 14px; } }
+    .pmf-vla { position: absolute; right: 2.5%; top: 52%; width: 23%; min-width: 190px; transform: translateY(-50%); opacity: 0; pointer-events: none; background: #1b2024; color: #fff; border-radius: 14px; padding: 12px 12px 10px; box-shadow: 0 10px 30px rgba(20,16,40,.22); display: flex; flex-direction: column; gap: 8px; }
+    .pmf-vla .pv-title { font-weight: 800; font-size: 20px; text-align: center; letter-spacing: .02em; }
+    .pmf-vla .pv-in { display: flex; gap: 5px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    .pmf-vla .pv-slot { width: 46px; aspect-ratio: 1; border: 2px dashed #555c66; border-radius: 6px; }
+    .pmf-vla .pv-txt { font-size: 11.5px; color: #c9c6d6; }
+    .pmf-vla .pv-blk { text-align: center; font-size: 12.5px; font-weight: 700; padding: 7px 6px; border-radius: 8px; background: #2c323a; color: #c9ccd2; transition: background .25s, color .25s, box-shadow .25s; }
+    .pmf-vla .pv-blk.on { background: var(--accent); color: #fff; box-shadow: 0 0 0 3px rgba(167,139,250,.35); }
+    .pmf-vla .pv-out { display: flex; gap: 4px; justify-content: center; }
+    .pmf-vla .pv-out i { font-style: normal; font-family: "Times New Roman", serif; font-size: 14px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: #2c323a; color: #6c727c; transition: all .25s; }
+    .pmf-vla .pv-out i.on { background: #c51f99; color: #fff; }
+    .pmf-vla .pv-cap { text-align: center; font-size: 11px; color: #a9a5b8; margin-top: -3px; }
+    .pmf-thumb { position: absolute; opacity: 0; border: 2px solid; border-radius: 4px; aspect-ratio: 1; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+    .pmf-link { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+    @media (max-width: 700px) { .pmf-vla { width: 40%; min-width: 0; padding: 7px; gap: 4px; } .pmf-vla .pv-slot { width: 24px; } .pmf-vla .pv-title { font-size: 14px; } .pmf-vla .pv-blk { font-size: 10px; padding: 4px; } .pmf-vla .pv-out i { font-size: 11px; padding: 1px 4px; } .pmf-vla .pv-txt, .pmf-vla .pv-cap { display: none; } }
+    .pmf-opts { display: grid; gap: 30px; margin-top: 26px; }
+    .pmf-opt > .gap-h { margin-bottom: 8px; }
+    .pmf .pms-stage canvas { cursor: default; }
+    .pmf-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #eceaf3; }
+    .pmf-prog i { display: block; height: 100%; width: 0; background: var(--accent); }
+    .proto-opts { display: grid; gap: 22px; margin-top: 26px; }
+    .proto-opts video { display: block; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+    .montage { margin-top: 34px; }
+    .montage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .montage-grid video { display: block; width: 100%; aspect-ratio: 2 / 1; border-radius: var(--radius); border: 1px solid var(--line); background: #fff; }
+    .montage-grid figcaption { margin-top: 6px; font-size: 13.5px; }
+    .montage-key { max-width: 820px; margin: 16px auto 0; font-size: 14.5px; color: var(--muted); }
+    @media (max-width: 720px) { .montage-grid { grid-template-columns: 1fr; } }
+    .kicker { display: block; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ink); text-align: center; margin-bottom: 10px; }
+    .question { max-width: 820px; margin: 22px auto; padding: 16px 22px; border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--radius) var(--radius) 0; font-size: 19px; font-weight: 700; color: var(--ink); }
+    .question.plain { background: #fff; border-color: var(--line); font-weight: 600; color: #3a4349; }
+    .prose { max-width: 820px; margin: 0 auto; }
+    .prose p { color: #3a4349; }
+    .viewer { margin-top: 8px; }
+    .pmc-cfg, .pmc-ctl { display: none !important; }
+    .viewer-cap { max-width: 820px; margin: 18px auto 0; color: #3a4349; }
+    .path { color: var(--path); font-weight: 700; }
+    .bignums { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 700px; margin: 18px auto 0; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+    .grid2 > * { min-width: 0; }
+    .grid2 h4 { margin: 0 0 8px; font-size: 18px; }
+    .table-wrap.compact table { min-width: 0; font-size: 14.5px; }
+    .table-wrap.compact th, .table-wrap.compact td { white-space: normal; padding: 8px 9px; }
+    td small { font-weight: 400; color: var(--muted); }
+    td u { text-decoration: underline; text-underline-offset: 2px; }
+    .table-wrap.compact td.ans { font-weight: 800; color: var(--accent-ink); white-space: nowrap; }
+    /* VQA gallery */
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 0 0 14px; }
+    .tabs button { font: 600 14px "Open Sans", sans-serif; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; }
+    .tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .tabs button:hover:not(.on) { color: var(--accent-ink); border-color: var(--accent); }
+    /* 3D VQA scene viewer */
+    .pms { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px 14px; }
+    .pms .pms-tabs { margin-bottom: 12px; }
+    .pms-head { font-size: 14.5px; color: var(--muted); margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+    .pms-head b { font-size: 18px; color: var(--ink); }
+    .pms-head .tag { margin: 0; }
+    .pms-body { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    .pms-stage { position: relative; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; touch-action: none; }
+    .pms-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
+    .pms-stage canvas.ov { pointer-events: none; }
+    .pms-stage:active canvas { cursor: grabbing; }
+    .pms-stage .msg { position: absolute; left: 10px; top: 8px; font-size: 13px; color: var(--muted); background: rgba(255,255,255,.85); padding: 2px 8px; border-radius: 6px; pointer-events: none; }
+    .pms-stage .msg:empty { display: none; }
+    .pms-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: rgba(255,255,255,.92); border-top: 1px solid var(--line); }
+    .pms-bar button { font: 600 13px "Open Sans", sans-serif; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--muted); }
+    .pms-bar button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .pms-bar .n { margin-left: auto; font-size: 12px; color: var(--muted); }
+    .pms-side { display: flex; gap: 8px; min-width: 0; justify-content: center; flex-wrap: wrap; }
+    .pms-side figure { width: 180px; max-width: 23%; }
+    .pms-side figure img { width: 100%; border-radius: 8px; border: 1px solid var(--line); aspect-ratio: 4 / 3; object-fit: cover; background: #000; }
+    .pms-side figcaption { margin-top: 2px; font-size: 12px; text-align: center; }
+    .pms-qas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .pms-qas .qa { text-align: left; font: inherit; font-size: 14px; line-height: 1.45; background: #f7faf7; border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; color: var(--ink); display: flex; flex-direction: column; gap: 4px; }
+    .pms-qas .qa:hover { border-color: var(--accent); }
+    .pms-qas .qa.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .pms-qas .qa .hd { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--accent-ink); font-weight: 700; }
+    .pms-qas .qa .hd i { font-style: normal; display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; text-align: center; line-height: 20px; font-size: 12px; }
+    .pms-qas .qa.on .hd i { background: var(--accent-ink); }
+    .pms-qas .qa .hd em { font-style: normal; }
+    .pms-qas .qa .hd small { margin-left: auto; font-weight: 600; color: var(--muted); }
+    .pms-qas .qa .q b, .pms-qas .qa .a b { display: inline-block; width: 18px; color: var(--muted); }
+    .pms-qas .qa .a { color: var(--accent-ink); font-weight: 700; word-break: break-word; }
+    .pms-qas .qa.text { opacity: .85; }
+    .pms-foot { margin-top: 10px; font-size: 13.5px; color: var(--muted); min-height: 1.4em; }
+    /* bar charts */
+    .bars { display: grid; gap: 7px; margin-top: 6px; }
+    .bar { display: grid; grid-template-columns: 170px 1fr 58px; align-items: center; gap: 10px; font-size: 14.5px; }
+    .bar .lbl { color: #3a4349; text-align: right; line-height: 1.25; }
+    .bar .track { height: 20px; background: #eef1ef; border-radius: 6px; overflow: hidden; }
+    .bar .fill { height: 100%; background: #b7c1bb; border-radius: 6px; transition: width .6s ease; }
+    .bar.hi .fill { background: var(--accent); }
+    .bar.hi .lbl, .bar.hi .val { font-weight: 800; color: var(--accent-ink); }
+    .bar .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .bars.groups .bar { grid-template-columns: 110px 1fr 58px; }
+    .legend { display: flex; gap: 16px; font-size: 13.5px; color: var(--muted); margin-top: 8px; }
+    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: #b7c1bb; }
+    .legend i.hi { background: var(--accent); }
+    .ablation { padding: 28px 0; border-top: 1px solid var(--line); }
+    .ablation:first-of-type { border-top: none; }
+    .ablation .grid2 { align-items: center; }
+    .ablation p { color: #3a4349; }
+    .ablation .note { font-size: 13.5px; color: var(--muted); margin: 8px 0 0; }
+    /* real-world task cards */
+    .taskcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+    .taskcard { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 16px 14px; }
+    .taskcard h4 { margin: 0; font-size: 18px; }
+    .taskcard .cond { font-size: 13.5px; color: var(--muted); margin: 2px 0 10px; min-height: 36px; }
+    .toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-bottom: 10px; }
+    .toggle button { font: 600 13px "Open Sans", sans-serif; padding: 5px 13px; border: 0; background: #fff; color: var(--muted); cursor: pointer; }
+    .toggle button.on { background: var(--accent); color: #fff; }
+    .taskcard .instr { font-size: 13.5px; color: #3a4349; font-style: italic; margin: 0 0 10px; min-height: 40px; }
+    .vgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .vcell { min-width: 0; }
+    .vcell { position: relative; }
+    .vcell video, .vcell .none { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #000; display: block; }
+    .vcell .none { background: #f3f5f4; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #a3a7b3; }
+    .vcell.ours video { border: 2px solid var(--accent); }
+    .vcell .nm { margin-top: 4px; font-size: 12.5px; font-weight: 700; color: var(--ink); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 6px; }
+    .vcell .nm span { font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+    .vcell .ok { background: var(--accent-soft); color: var(--accent-ink); }
+    .vcell .fail { background: #fdecec; color: #b91c1c; }
+    .vcell .sr { font-size: 12px; color: var(--muted); font-weight: 400; }
+    .taskcard .foot { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+    /* occlusion stage */
+    .occl { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+    .occl .top { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .occl .desc { font-size: 14.5px; color: #3a4349; max-width: 560px; }
+    .occl .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 760px; margin: 0 auto; }
+    .occl .pair video { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); background: #000; }
+    .occl .pair .ours video { border: 2px solid var(--accent); }
+    .occl .pair .nm { margin-top: 6px; font-size: 14px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+    .occl .pair .nm span { font-size: 12px; padding: 1px 8px; border-radius: 999px; }
+    .occl .pair .ok { background: var(--accent-soft); color: var(--accent-ink); }
+    .occl .pair .fail { background: #fdecec; color: #b91c1c; }
+    .occl .pair .sr { font-size: 13px; color: var(--muted); font-weight: 400; }
+    .occl .cams { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: 6px; }
+    .closing { max-width: 820px; margin: 0 auto; text-align: center; font-size: clamp(20px, 2.6vw, 27px); font-weight: 800; line-height: 1.35; color: var(--ink); }
+    .closing span { color: var(--accent-ink); }
+    @media (max-width: 960px) { .taskcards { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .pms-stage { aspect-ratio: 4 / 3; } .pms-bar .n { display: none; } .bar { grid-template-columns: 110px 1fr 50px; font-size: 13px; } .bars.groups .bar { grid-template-columns: 80px 1fr 50px; } .question { font-size: 17px; } }
+  </style>
+  <link rel="stylesheet" href="static/css/typography.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><span>Pointmap</span>VLA</a>
+    <a href="#pointmap">Pointmaps</a>
+    <a href="#understand">3D Spatial VQA</a>
+    <a href="#recipe">Training</a>
+    <a href="#results">Results</a>
+    <a href="#why">Analysis</a>
+    <a href="#bibtex">BibTeX</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <h1><span class="flash">Pointmap</span>VLA</h1>
+    <p class="subtitle">Scaling Robot Learning with Robot-Centric Pointmaps</p>
+
+    <div class="authors grid4">
+      <div class="row"><span><a href="https://godnpeter.github.io" target="_blank" rel="noopener">Dongyoon Hwang</a><sup>1*</sup></span><span><a href="https://k00dj-19.github.io/" target="_blank" rel="noopener">Dongjin Kim</a><sup>1*</sup></span><span><a href="https://lee15253.github.io/" target="_blank" rel="noopener">Byungkun Lee</a><sup>1*</sup></span><span><a href="https://kyungminn.github.io/" target="_blank" rel="noopener">Kyungmin Lee</a><sup>1</sup></span></div>
+      <div class="row"><span><a href="https://aiclaudev.github.io/" target="_blank" rel="noopener">Dohyun Lee</a><sup>1</sup></span><span><a href="https://joonleesky.github.io/" target="_blank" rel="noopener">Hojoon Lee</a><sup>2</sup></span><span><a href="https://pmh9960.github.io" target="_blank" rel="noopener">Minho Park</a><sup>1</sup></span><span><a href="https://sites.google.com/site/jaegulchoo/" target="_blank" rel="noopener">Jaegul Choo</a><sup>1&dagger;</sup></span></div>
+    </div>
+    <div class="affils"><span><sup>1</sup>KAIST AI</span><span><sup>2</sup>Holiday Robotics</span></div>
+    <div class="author-notes"><span><sup>*</sup>Equal contribution</span><span><sup>&dagger;</sup>Corresponding author</span></div>
+
+    <div class="buttons">   <!-- 3D_HAMSTER-style pills: icon + label (user, 2026-10-19) -->
+      <a class="btn" href="static/PointmapVLA.pdf" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM8 13h8v1.5H8V13zm0 3.5h8V18H8v-1.5z"/></svg><span>Paper</span></a>
+      <span class="btn disabled"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8423 0a1.0037 1.0037 0 0 0-.922.6078c-.1536.3687-.0438.6275.2938 1.1113l6.9185 8.3597-1.0223 1.1058a1.0393 1.0393 0 0 0 .003 1.4229l1.2292 1.3135-5.4391 6.4444c-.2803.299-.4538.823-.2971 1.1986a1.0253 1.0253 0 0 0 .9585.635.9133.9133 0 0 0 .6891-.3405l5.783-6.126 7.4902 8.0051a.8527.8527 0 0 0 .6835.2597.9575.9575 0 0 0 .8777-.6138c.1577-.377-.017-.7502-.306-1.1407l-7.0518-8.3418 1.0632-1.13a.9626.9626 0 0 0 .0089-1.3165L4.6336.4639s-.3733-.4535-.768-.463zm0 .272h.0166c.2179.0052.4874.2715.5644.3639l.005.006.0052.0055 10.169 10.9905a.6915.6915 0 0 1-.0072.945l-1.0666 1.133-1.4982-1.7724-8.5994-10.39c-.3286-.472-.352-.6183-.2592-.841a.7307.7307 0 0 1 .6704-.4401Zm14.341 1.5701a.877.877 0 0 0-.6554.2418l-5.6962 6.1584 1.6944 1.8319 5.3089-6.5138c.3251-.4335.479-.6603.3247-1.0292a1.1205 1.1205 0 0 0-.9763-.689zm-7.6557 12.2823 1.3186 1.4135-5.7864 6.1295a.6494.6494 0 0 1-.4959.26.7516.7516 0 0 1-.706-.4669c-.1119-.2682.0359-.6864.2442-.9083l.0051-.0055.0047-.0055z"/></svg><span>arXiv</span><em class="soon">soon</em></span>
+      <a class="btn" href="https://github.com/DAVIAN-Robotics/PointmapVLA" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg><span>Code</span></a>
+      <a class="btn" href="https://huggingface.co/DAVIAN-Robotics" target="_blank" rel="noopener"><i class="emo" aria-hidden="true">🤗</i><span>Models &amp; Data</span></a>
+      <a class="btn" href="#bibtex"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z"/></svg><span>BibTeX</span></a>
+    </div>
+    <p class="tldr"><b>TL;DR</b> PointmapVLA combines robot-base frame pointmaps with 3D spatial VQA training to improve robot manipulation. It reaches <strong>99.0%</strong> on LIBERO, <strong>92.4%</strong> on LIBERO-Plus, and <strong>78.2%</strong> on RoboCasa, outperforming strong WAM and VLA baselines on LIBERO-Plus and RoboCasa, and improves real-world success.</p>
+  </div>
+  <!-- hero (user, 2026-10-19): TL;DR, headline numbers vs the strongest WAM and VLA (paper Tables 1-2), one overview with a real rollout -->
+  <div class="wrap wide hero-fig">
+    <figure><img src="static/images/fig_overview.jpg" alt="PointmapVLA overview: training data (76.3M robot frames, 10.7M 3D spatial VQA pairs), the pipeline from multi-view RGB and pointmaps to spatial answering and actions, and evaluation results">
+      <figcaption><b>Overview.</b> PointmapVLA jointly learns robot control and 3D spatial understanding from multi-view RGB and robot-base frame pointmaps.</figcaption></figure>
+  </div>
+  <!-- hero montage: RoboCasa rollouts, RGB | fused robot-frame pointmap (../build/export_montage.py) -->
+<!-- hero montage hidden 2026-10-18 (user: does not show that pointmaps are used)
+  <div class="wrap montage">
+    <div class="montage-grid">
+      <figure><video src="static/videos/hero_rc_1500.mp4" poster="static/videos/hero_rc_1500.jpg" autoplay muted loop playsinline></video>
+        <figcaption>&ldquo;Pick the mug and place it under the coffee machine dispenser&rdquo;</figcaption></figure>
+      <figure><video src="static/videos/hero_rc_3307.mp4" poster="static/videos/hero_rc_3307.jpg" autoplay muted loop playsinline></video>
+        <figcaption>&ldquo;Pick the garlic from the counter and place it in the microwave&rdquo;</figcaption></figure>
+      <figure><video src="static/videos/hero_rc_2107.mp4" poster="static/videos/hero_rc_2107.jpg" autoplay muted loop playsinline></video>
+        <figcaption>&ldquo;Open the left drawer&rdquo;</figcaption></figure>
+      <figure><video src="static/videos/hero_rc_3607.mp4" poster="static/videos/hero_rc_3607.jpg" autoplay muted loop playsinline></video>
+        <figcaption>&ldquo;Pick the carrot from the counter and place it in the sink&rdquo;</figcaption></figure>
+    </div>
+    <p class="montage-key"><b>Left:</b> what one camera sees (RGB). <b>Right:</b> the robot-centric pointmap from all three cameras,
+      every pixel placed at its metric 3D position in the robot&rsquo;s base frame (axes at the base: <span style="color:#dc2828">x</span>
+      <span style="color:#28aa3c">y</span> <span style="color:#325ae6">z</span>). RoboCasa demonstrations.</p>
+  </div>
+  -->
+</header>
+
+<!-- 1 + 2 (user, 2026-10-19): one section; RGB-only VLA (grey, left) vs PointmapVLA (purple only on the pointmap path, right),
+     short parallel claims, small model box / big inputs, one shared timeline. Earlier variants: reference/backup_2026-10-19_* -->
+<section id="pointmap">
+  <div class="wrap">
+    <span class="kicker">01</span>
+    <h2>PointmapVLA: Explicit 3D geometry for action prediction</h2>
+    <p class="lead">RGB-based VLAs predict 3D robot actions from camera images, so they must infer the scene’s metric geometry while learning to act. PointmapVLA pairs RGB observations with pointmaps in the robot-base frame to provide explicit 3D geometry. Each pointmap maps image pixels to 3D positions, linking visual appearance to robot-relative geometry and giving all cameras a shared spatial reference.</p>
+  </div>
+  <div class="wrap wide">
+    <div class="vs-grid" id="problem">
+      <figure class="observation-figure vs-col">
+        <h3 class="vs-head">RGB-based VLA</h3>
+        <p class="vs-claim">3D geometry must be inferred</p>
+        <p class="vs-in">From RGB observations</p>
+        <div id="problem-stage"><p class="visual-fallback">Loading the recorded episode…</p></div>
+      </figure>
+      <figure class="observation-figure vs-col pointmap-overview">
+        <h3 class="vs-head">PointmapVLA</h3>
+        <p class="vs-claim">3D geometry is provided</p>
+        <p class="vs-in"><span>Through robot-base frame <b>pointmaps</b></span><span class="vs-hint">Hover over the pointmap to explore</span></p>
+        <div id="pm-stage-2a"><p class="visual-fallback">Loading the recorded episode…</p></div>
+      </figure>
+    </div>
+    <div class="vs-bar"></div>
+    <p class="vs-caption">Both players replay the same recorded RoboCasa episode on one timeline. Left: the scene is light grey because the VLA never receives its 3D geometry. Right: the pointmaps provide it in robot-base coordinates. Action chunks are schematic; robot motion is replayed from the demonstration.</p>
+  </div>
+  </div>
+  <div class="wrap wide">
+    <!-- 2026-10-18: the Play-button "Animation example" (#fusion-demo, pm-fusion-demo.js) was replaced by the subsection below (user).
+    <figure class="fusion-demo" id="fusion-demo">
+      <header class="fusion-demo-header">
+        <div><span class="fusion-demo-label">Animation example</span><h3>From matching patches to an input token</h3></div>
+        <button type="button" class="fusion-demo-play">Play example</button>
+      </header>
+      <p class="fusion-demo-status" role="status">Play to follow one RGB–pointmap patch pair through the input stage.</p>
+      <div class="fusion-demo-stage"><p class="visual-fallback">The example will load when you press Play.</p></div>
+      <figcaption>Input detail expands once, then returns to the overview for action prediction and recorded robot motion. Feature tokens and action chunks are schematic.</figcaption>
+    </figure>
+    -->
+    <div class="fuse-sub">
+      <h3>Combining RGB and pointmap tokens</h3>
+      <figure class="fuse-sub-fig">
+        <div id="fuse-anim"></div>
+        <div class="fuse-sub-code">
+          <p class="fuse-txt">RGB images and pointmaps are encoded separately; the pointmap encoder starts from the RGB encoder's weights.</p>
+          <p class="fuse-txt">Both share one patch grid, so the two features of each patch are <b>added into a single token</b>: it carries
+            <b>what the patch shows</b> and <b>where it is in 3D</b>, relative to the robot.</p>
+          <p class="fuse-txt">The model receives as many visual tokens as with RGB alone; together with the instruction, they condition
+            action-chunk prediction.</p>
+<pre class="pm-code"><code><span class="c"># per view: 8×8 = 64 tokens</span>
+rgb = rgb_encoder(rgb_image)       <span class="c"># (64, d)</span>
+pm  = pointmap_encoder(pointmap)   <span class="c"># (64, d)</span>
+tok = rgb + pm                     <span class="c"># token-wise</span></code></pre>
+          <p class="pm-code-note">Simplified from our implementation: 256×256 inputs, 16×16 patches merged 2×2; <code>d</code> = backbone width.
+            The figure uses a 4×4 grid for illustration.</p>
+        </div>
+      </figure>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="pm-sub" id="pointmap-contents">
+      <h3>What pointmaps contain</h3>
+      <p class="section-copy">Take any pixel. Its RGB value says what the surface looks like; the same pixel in the pointmap stores where that
+        surface is: its XYZ position in metres, relative to the robot base. Because every camera uses the same robot-base frame, the same
+        physical point carries the same coordinates in every view. Pick a pixel below and see where it lands in the scene.</p>
+      <figure class="pixel-inspector" id="pixel-inspector">
+      <div class="visual-toolbar"></div>
+      <div class="px-grid">
+        <div class="pixel-pair">
+          <div><h3>RGB image</h3><canvas id="pixel-rgb" tabindex="0" role="img" aria-label="RGB image: select a pixel to inspect its 3D coordinates"></canvas></div>
+          <div><h3>Pixel-aligned pointmap</h3><canvas id="pixel-xyz" tabindex="0" role="img" aria-label="Pointmap: select the corresponding pixel to inspect its 3D coordinates"></canvas></div>
+        </div>
+        <div class="px3d-wrap"><h3>In the robot frame <span class="px3d-hint">click a point · drag to rotate · scroll to zoom</span></h3>
+          <div class="px3d"><canvas class="px3d" aria-hidden="true"></canvas><svg class="px3d-ov" aria-hidden="true"></svg></div></div>
+      </div>
+      <output id="pixel-readout" aria-live="polite"></output>
+      <figcaption>Pointmap colour = XYZ (X red, Y green, Z blue). Dashed line: the camera ray through the pixel, ending at the stored point.</figcaption>
+    </figure>
+    </div>
+  </div>
+  <div class="wrap wide">
+    <div class="pm-sub toggle" id="pointmap-construction">
+      <details>
+        <summary><b>How pointmaps are constructed</b><span>New to pointmaps, or want the details? Open to see how one is built from depth.</span></summary>
+        <div class="construct-body">
+          <div class="construct-top one">
+            <div>
+              <p>Each camera gives an RGB image and a metric depth image. Using the camera intrinsics, every pixel's depth is lifted to an
+                XYZ point in that camera's frame. The camera extrinsics then move those points into the robot-base frame.</p>
+              <p>The result keeps the image layout: pixel (u, v) of the pointmap holds the 3D point seen at pixel (u, v) of the RGB image,
+                and every camera's pointmap shares the same robot-base frame.</p>
+            </div>
+          </div>
+          <div id="construct-side" hidden><pre class="pm-code steps" id="construct-code"><code><span class="ln" data-s="0"><span class="c"># 1  RGB image (H, W, 3) — appearance only</span></span><span class="ln" data-s="1"><span class="c"># 2  + depth (H, W), metres from the camera</span></span><span class="ln" data-s="2">x = (u + 0.5 - cx) / fx * depth   <span class="c"># 3  + intrinsics K</span></span><span class="ln" data-s="2">y = (v + 0.5 - cy) / fy * depth</span><span class="ln" data-s="2">p_cam  = stack([x, y, depth])     <span class="c">#    camera frame</span></span><span class="ln" data-s="3">p_base = p_cam @ R.T + t          <span class="c"># 4  + extrinsics → robot base</span></span></code></pre>
+              <p class="pm-code-note">Simplified from our data pipeline (pixel centres, OpenCV pinhole); invalid depth → 0.</p></div>
+      <figure class="observation-figure">
+          <div id="build-stage"><p class="visual-fallback">Loading the depth-to-pointmap visualization…</p></div>
+          <figcaption>RGB + depth → camera-frame pointmap (intrinsics K) → robot-base pointmap (extrinsics R, t). Camera-frame clouds are
+            spread apart for illustration; the model receives each view in its own pixel layout.</figcaption>
+        </figure>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="understand" class="alt">
+  <div class="wrap">
+    <span class="kicker">02</span>
+    <h2>Learning to interpret 3D geometry</h2>
+    <p class="lead">
+      Providing pointmaps introduces a new input representation to an RGB-pretrained VLM. With robot demonstrations alone, the
+      model must learn to interpret this representation through action supervision.
+    </p>
+    <div class="prose">
+      <p>
+        We add <b>pointmap-conditioned 3D spatial VQA</b> to supervise geometric understanding directly.
+        Questions ask the model to locate objects in 3D, estimate metric distances, and reason about spatial relationships.
+      </p>
+      <p>
+        Our training corpus pairs pointmaps with <b>76.3 million robot demonstration frames</b> and <b>10.7 million 3D spatial VQA
+        examples</b>, bringing action prediction and spatial understanding into joint training.
+      </p>
+    </div>
+
+    <figure style="margin-top:22px">
+      <div class="figure-img"><img src="static/images/fig_data_overview.jpg" alt="Training data overview: 3D robot demonstrations and 3D spatial VQA data" loading="lazy"></div>
+      <figcaption>
+        <b>The pointmap-paired corpus.</b> (a) Robot demonstrations from DROID (real) and InternData-M1 (simulation), three
+        cameras fused into one robot-base scene. (b) 3D spatial VQA: robot-scene questions in the robot frame and general-scene
+        questions in a pseudo-base frame, with answers that are 3D boxes, metric distances, sizes and orderings.
+      </figcaption>
+    </figure>
+
+    <h3>Examples from the corpus</h3>
+    <p>Training samples shown as the model sees them: each camera's RGB image with its pointmap, and every pixel placed in one 3D frame.
+      <b>Drag to orbit, scroll to zoom, right-drag to pan.</b></p>
+    <div class="corpus-switch" role="tablist">
+      <button type="button" class="on" data-g="robot">Robot data <small>DROID · InternData-M1 episodes</small></button>
+      <button type="button" data-g="vqa">3D spatial VQA <small>click a question to draw its answer</small></button>
+    </div>
+    <div id="robot-scene" class="corpus-pane"></div>
+    <div id="vqa-scene" class="corpus-pane" hidden></div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section id="recipe">
+  <div class="wrap">
+    <span class="kicker">03</span>
+    <h2>Training spatial understanding and continuous control</h2>
+    <p class="lead">PointmapVLA follows a two-stage training process.</p>
+    <figure>
+      <div class="figure-img"><img src="static/images/fig_architecture.jpg" alt="PointmapVLA architecture and two-stage training recipe" loading="lazy"></div>
+      <figcaption>
+        <b>Architecture and recipe.</b> RGB and aligned pointmaps go through separate encoders and are fused patch-wise.
+        Both stages keep the 3D spatial VQA and discrete-action paths; Stage 2 adds the continuous action expert.
+      </figcaption>
+    </figure>
+    <div class="cards" style="margin-top:28px">
+      <div class="card">
+        <span class="tag">Stage 1</span>
+        <h4>Learn to read pointmaps</h4>
+        <p>
+          The vision-language backbone learns from two kinds of examples at once: spatial questions answered from the pointmaps, and
+          robot actions written as discrete tokens. Both are predicted as text, so a single next-token loss trains them together.
+        </p>
+      </div>
+      <div class="card">
+        <span class="tag">Stage 2</span>
+        <h4>Add continuous actions</h4>
+        <p>
+          A flow-matching action expert is attached to the backbone and trained with it to output smooth, continuous action chunks.
+          The Stage 1 losses stay on, so the model keeps practising spatial reasoning while it learns precise control.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="results" class="alt">
+  <div class="wrap">
+    <span class="kicker">04</span>
+    <h2>Results</h2>
+
+    <h3>Simulation</h3>
+    <p>PointmapVLA achieves strong performance across standard manipulation tasks, perturbed environments, and kitchen
+      tasks requiring precise spatial interactions.</p>
+    <div class="bench-stats">
+      <div><span>LIBERO</span><b>99.0%</b><em>Standard manipulation tasks</em></div>
+      <div><span>LIBERO-Plus</span><b>92.4%</b><em>Visual, spatial, and linguistic perturbations</em></div>
+      <div><span>RoboCasa</span><b>78.2%</b><em>24 kitchen manipulation tasks</em></div>
+    </div>
+    <p>PointmapVLA achieves the highest success rates on LIBERO-Plus and RoboCasa.
+      LIBERO-Plus is evaluated using the LIBERO-fine-tuned checkpoint <b>without additional fine-tuning</b>.</p>
+    <!-- paper-tables -->
+    <div class="tables-2">
+      <div><h4>LIBERO &amp; LIBERO-Plus</h4>
+      <div class="table-wrap full"><table>
+<thead><tr><th>Method</th><th>LIBERO</th><th>LIBERO-Plus</th></tr></thead><tbody>
+<tr class="grp"><td colspan="3">WAMs</td></tr>
+<tr><td>Cosmos-Policy</td><td>98.5</td><td>82.2</td></tr>
+<tr><td>ABot-M0.5</td><td><b>99.4</b></td><td>83.4</td></tr>
+<tr class="grp"><td colspan="3">VLAs</td></tr>
+<tr><td>InternVLA-A1.5</td><td>98.9</td><td>84.8</td></tr>
+<tr><td>Qwen-RobotManip</td><td>99.1</td><td>89.0</td></tr>
+<tr><td>Qwen-RobotManip-Context</td><td><u>99.2</u></td><td><u>91.4</u></td></tr>
+<tr class="grp"><td colspan="3">Geometry-aware WAMs</td></tr>
+<tr><td>GAM</td><td>97.6</td><td>85.5</td></tr>
+<tr><td>GIFT-WAM-IDM</td><td>98.5</td><td>87.8</td></tr>
+<tr><td>Flex-π</td><td>98.5</td><td>88.6</td></tr>
+<tr class="grp"><td colspan="3">Geometry-aware VLAs</td></tr>
+<tr><td>Spatial Forcing</td><td>98.5</td><td>29.1</td></tr>
+<tr><td>ABot-M0</td><td>98.6</td><td>80.5</td></tr>
+<tr class="ours"><td>PointmapVLA (Ours)</td><td>99.0<small>±0.1</small></td><td><b>92.4</b><small>±0.3</small></td></tr></tbody>
+      </table></div></div>
+      <div><h4>RoboCasa</h4>
+      <div class="table-wrap full"><table>
+<thead><tr><th>Method</th><th>Success (%)</th></tr></thead><tbody>
+<tr class="grp"><td colspan="2">WAMs</td></tr>
+<tr><td>UWM</td><td>60.8</td></tr>
+<tr><td>DreamZero</td><td>62.4</td></tr>
+<tr><td>Cosmos Policy</td><td>67.1</td></tr>
+<tr class="grp"><td colspan="2">VLAs</td></tr>
+<tr><td>RLDX-1</td><td>70.6</td></tr>
+<tr><td>Xiaomi-Robotics-1</td><td>74.5</td></tr>
+<tr class="grp"><td colspan="2">Geometry-aware WAMs</td></tr>
+<tr><td>GAM</td><td>69.4</td></tr>
+<tr><td>DeVA</td><td>72.0</td></tr>
+<tr><td>SA-WAM</td><td><u>76.6</u></td></tr>
+<tr class="grp"><td colspan="2">Geometry-aware VLAs</td></tr>
+<tr><td>GeoPredict</td><td>52.4</td></tr>
+<tr><td>SeeR-VLA</td><td>61.5</td></tr>
+<tr class="ours"><td>PointmapVLA (Ours)</td><td><b>78.2</b><small>±0.9</small></td></tr></tbody>
+      </table></div></div>
+    </div>
+    <p class="metric-note">Success rates (%), mean ± std over three evaluation runs for PointmapVLA (paper Tables 1 and 2). <b>Best</b>, <u>second best</u>.</p>
+
+    <details class="full-tables">
+      <summary>Full tables: all baselines, per suite, per perturbation and per task</summary>
+    <h4>LIBERO</h4>
+    <div class="table-wrap full"><table>
+<thead><tr><th>Method</th><th>Spatial</th><th>Object</th><th>Goal</th><th>Long</th><th>Avg.</th></tr></thead><tbody>
+<tr class="grp"><td colspan="6">WAMs</td></tr>
+<tr><td>GE-Act</td><td>98.2</td><td>97.6</td><td>95.8</td><td>94.4</td><td>96.5</td></tr>
+<tr><td>Fast-WAM</td><td>98.2</td><td><b>100.0</b></td><td>97.0</td><td>95.2</td><td>97.6</td></tr>
+<tr><td>ImageWAM</td><td>97.2</td><td>99.2</td><td>98.8</td><td><u>98.4</u></td><td>98.4</td></tr>
+<tr><td>Cosmos-Policy</td><td>98.1</td><td><b>100.0</b></td><td>98.2</td><td>97.6</td><td>98.5</td></tr>
+<tr><td>ABot-M0.5</td><td><b>100.0</b></td><td><u>99.8</u></td><td><b>99.4</b></td><td><u>98.4</u></td><td><b>99.4</b></td></tr>
+<tr class="grp"><td colspan="6">VLAs</td></tr>
+<tr><td>OpenVLA</td><td>84.7</td><td>88.4</td><td>79.2</td><td>53.7</td><td>76.5</td></tr>
+<tr><td>π0-FAST</td><td>96.4</td><td>96.8</td><td>88.6</td><td>60.2</td><td>85.5</td></tr>
+<tr><td>π0</td><td>98.0</td><td>96.8</td><td>94.4</td><td>88.4</td><td>94.4</td></tr>
+<tr><td>UniVLA</td><td>96.5</td><td>96.8</td><td>95.6</td><td>92.0</td><td>95.2</td></tr>
+<tr><td>π0.5</td><td>98.8</td><td>98.2</td><td>98.0</td><td>92.4</td><td>96.9</td></tr>
+<tr><td>GR00T N1.6</td><td>97.7</td><td>98.5</td><td>97.5</td><td>94.4</td><td>97.0</td></tr>
+<tr><td>OpenVLA-OFT</td><td>97.6</td><td>98.4</td><td>97.9</td><td>94.5</td><td>97.1</td></tr>
+<tr><td>RIPT-VLA</td><td>98.6</td><td>98.6</td><td>99.0</td><td>93.8</td><td>97.5</td></tr>
+<tr><td>RLDX-1</td><td>98.0</td><td>99.3</td><td>98.4</td><td>95.3</td><td>97.8</td></tr>
+<tr><td>X-VLA</td><td>98.2</td><td>98.6</td><td>97.8</td><td>97.6</td><td>98.1</td></tr>
+<tr><td>ACoT-VLA</td><td>98.6</td><td>99.0</td><td><b>99.4</b></td><td>97.0</td><td>98.5</td></tr>
+<tr><td>InternVLA-A1.5</td><td>98.6</td><td><u>99.8</u></td><td>98.6</td><td><u>98.4</u></td><td>98.9</td></tr>
+<tr><td>Qwen-RobotManip</td><td>–</td><td>–</td><td>–</td><td>–</td><td>99.1</td></tr>
+<tr><td>Qwen-RobotManip-Ctx</td><td>–</td><td>–</td><td>–</td><td>–</td><td><u>99.2</u></td></tr>
+<tr class="grp"><td colspan="6">Geometry-aware WAMs</td></tr>
+<tr><td>GAM</td><td>98.6</td><td>99.6</td><td>97.4</td><td>94.6</td><td>97.6</td></tr>
+<tr><td>GIFT-WAM-IDM</td><td>99.0</td><td><b>100.0</b></td><td>98.6</td><td>96.4</td><td>98.5</td></tr>
+<tr><td>SG-WAM</td><td>99.4</td><td>99.4</td><td>98.2</td><td>97.8</td><td>98.7</td></tr>
+<tr><td>Flex-π</td><td><u>99.6</u></td><td><u>99.8</u></td><td>98.6</td><td>96.0</td><td>98.5</td></tr>
+<tr><td>Flex-π*</td><td>99.2</td><td><u>99.8</u></td><td>99.0</td><td><b>98.6</b></td><td><u>99.2</u></td></tr>
+<tr class="grp"><td colspan="6">Geometry-aware VLAs</td></tr>
+<tr><td>Evo-Depth</td><td>95.6</td><td>99.2</td><td>95.6</td><td>91.3</td><td>95.4</td></tr>
+<tr><td>HoloBrain-0-GD</td><td>97.8</td><td>98.2</td><td>95.2</td><td>95.6</td><td>96.7</td></tr>
+<tr><td>GIFT-VLA</td><td>99.0</td><td>99.2</td><td>98.4</td><td>94.8</td><td>97.9</td></tr>
+<tr><td>Spatial Forcing</td><td>99.4</td><td>99.6</td><td>98.8</td><td>96.0</td><td>98.5</td></tr>
+<tr><td>ABot-M0</td><td>98.8</td><td><u>99.8</u></td><td>99.0</td><td>96.6</td><td>98.6</td></tr>
+<tr class="ours"><td>PointmapVLA (Ours)</td><td>99.4</td><td>99.5</td><td><u>99.3</u></td><td>97.9</td><td>99.0</td></tr></tbody>
+    </table></div>
+    <p class="metric-note">Success rates (%) per suite (paper Table 9).</p>
+
+    <h4>LIBERO-Plus</h4>
+    <div class="table-wrap full"><table>
+<thead><tr><th>Method</th><th>Camera</th><th>Robot</th><th>Lang.</th><th>Light</th><th>Backgr.</th><th>Noise</th><th>Layout</th><th>Total</th></tr></thead><tbody>
+<tr class="grp"><td colspan="9">WAMs</td></tr>
+<tr><td>Fast-WAM</td><td>16.4</td><td>44.5</td><td>68.9</td><td>78.2</td><td>53.7</td><td>37.7</td><td>60.7</td><td>51.5</td></tr>
+<tr><td>VLA-JEPA</td><td>63.3</td><td>67.1</td><td>85.4</td><td>95.6</td><td>93.6</td><td>66.3</td><td>85.1</td><td>79.5</td></tr>
+<tr><td>Cosmos-Policy</td><td>75.8</td><td>63.3</td><td>81.7</td><td>96.5</td><td>88.9</td><td>92.7</td><td>82.2</td><td>82.2</td></tr>
+<tr><td>ImageWAM</td><td>80.8</td><td>50.3</td><td>91.4</td><td>98.1</td><td>85.5</td><td>93.8</td><td>80.5</td><td>83.1</td></tr>
+<tr><td>ABot-M0.5</td><td>70.5</td><td><u>87.4</u></td><td>88.6</td><td>94.0</td><td>89.7</td><td>75.5</td><td>85.2</td><td>83.4</td></tr>
+<tr class="grp"><td colspan="9">VLAs</td></tr>
+<tr><td>OpenVLA</td><td>0.8</td><td>3.5</td><td>23.0</td><td>8.1</td><td>34.8</td><td>15.2</td><td>28.5</td><td>15.6</td></tr>
+<tr><td>UniVLA</td><td>1.8</td><td>46.2</td><td>69.6</td><td>69.0</td><td>81.0</td><td>21.2</td><td>31.9</td><td>42.9</td></tr>
+<tr><td>π0</td><td>13.8</td><td>6.0</td><td>58.8</td><td>85.0</td><td>81.4</td><td>79.0</td><td>68.9</td><td>53.6</td></tr>
+<tr><td>π0-FAST</td><td>65.1</td><td>21.6</td><td>61.0</td><td>73.2</td><td>73.2</td><td>74.4</td><td>68.8</td><td>61.6</td></tr>
+<tr><td>RIPT-VLA</td><td>55.2</td><td>31.2</td><td>77.6</td><td>88.4</td><td>91.6</td><td>73.5</td><td>74.2</td><td>68.4</td></tr>
+<tr><td>OpenVLA-OFT</td><td>56.4</td><td>31.9</td><td>79.5</td><td>88.7</td><td>93.3</td><td>75.8</td><td>74.2</td><td>69.6</td></tr>
+<tr><td>π0.5</td><td>78.4</td><td>73.6</td><td>80.8</td><td>96.2</td><td>94.1</td><td>89.0</td><td>84.5</td><td>84.4</td></tr>
+<tr><td>InternVLA-A1.5</td><td>83.1</td><td>55.1</td><td>86.9</td><td>96.4</td><td>98.2</td><td>95.6</td><td>85.2</td><td>84.8</td></tr>
+<tr><td>ACoT-VLA</td><td>72.6</td><td>82.6</td><td>87.5</td><td>97.7</td><td>96.5</td><td>87.8</td><td><u>88.1</u></td><td>86.6</td></tr>
+<tr><td>RLDX-1</td><td>75.0</td><td><b>91.8</b></td><td><u>92.2</u></td><td>97.1</td><td>95.5</td><td>80.3</td><td>80.7</td><td>86.7</td></tr>
+<tr><td>Qwen-RobotManip</td><td>87.2</td><td>75.5</td><td>85.6</td><td>96.6</td><td>97.7</td><td>97.7</td><td>87.3</td><td>89.0</td></tr>
+<tr><td>Qwen-RobotManip-Ctx</td><td><b>89.9</b></td><td>83.9</td><td>86.5</td><td><u>98.6</u></td><td><b>99.9</b></td><td>97.9</td><td>87.5</td><td><u>91.4</u></td></tr>
+<tr class="grp"><td colspan="9">Geometry-aware WAMs</td></tr>
+<tr><td>SG-WAM</td><td>54.8</td><td>78.3</td><td>81.7</td><td>96.5</td><td>88.9</td><td>90.7</td><td>85.3</td><td>81.3</td></tr>
+<tr><td>GAM</td><td>83.1</td><td>70.0</td><td>84.8</td><td>97.2</td><td>94.3</td><td>95.3</td><td>79.1</td><td>85.5</td></tr>
+<tr><td>GIFT-WAM-IDM</td><td>78.7</td><td>80.5</td><td>90.2</td><td><b>99.0</b></td><td>89.2</td><td>97.2</td><td>83.3</td><td>87.8</td></tr>
+<tr><td>Flex-π</td><td><u>89.1</u></td><td>72.7</td><td>84.5</td><td>94.6</td><td>96.3</td><td><u>98.9</u></td><td>87.3</td><td>88.6</td></tr>
+<tr class="grp"><td colspan="9">Geometry-aware VLAs</td></tr>
+<tr><td>Spatial Forcing</td><td>20.1</td><td>13.4</td><td>40.9</td><td>29.1</td><td>33.4</td><td>25.7</td><td>39.3</td><td>29.1</td></tr>
+<tr><td>Evo-Depth</td><td>47.2</td><td>49.2</td><td>78.9</td><td>88.1</td><td>76.4</td><td>77.6</td><td>69.6</td><td>69.6</td></tr>
+<tr><td>HoloBrain-0-GD</td><td>65.5</td><td>58.2</td><td>78.7</td><td>88.1</td><td>90.3</td><td>66.9</td><td>79.5</td><td>74.0</td></tr>
+<tr><td>GIFT-VLA</td><td>57.7</td><td>63.7</td><td>88.6</td><td>98.5</td><td>96.9</td><td>82.5</td><td>80.3</td><td>79.6</td></tr>
+<tr><td>ABot-M0</td><td>60.4</td><td>67.9</td><td>86.4</td><td>96.2</td><td>91.6</td><td>86.4</td><td>82.6</td><td>80.5</td></tr>
+<tr class="ours"><td>PointmapVLA (Ours)</td><td>88.0</td><td>83.7</td><td><b>92.6</b></td><td><b>99.0</b></td><td><u>98.8</u></td><td><b>99.3</b></td><td><b>88.9</b></td><td><b>92.4</b></td></tr></tbody>
+    </table></div>
+    <p class="metric-note">Zero-shot success rates (%) per perturbation type (paper Table 10), with the LIBERO-fine-tuned checkpoint and no additional fine-tuning.</p>
+
+    <h4>RoboCasa</h4>
+    <div class="tables-2">
+      <div class="table-wrap full"><table>
+<thead><tr><th>Method</th><th>Avg. success (%)</th></tr></thead><tbody>
+<tr class="grp"><td colspan="2">VLAs</td></tr>
+<tr><td>π0.5</td><td>62.1</td></tr>
+<tr><td>π0</td><td>62.5</td></tr>
+<tr><td>π0-FAST</td><td>63.6</td></tr>
+<tr><td>GR00T N1.5</td><td>64.1</td></tr>
+<tr><td>GR00T N1.6</td><td>66.2</td></tr>
+<tr><td>RLDX-1</td><td>70.6</td></tr>
+<tr><td>Xiaomi-Robotics-1</td><td>74.5</td></tr>
+<tr class="grp"><td colspan="2">WAMs</td></tr>
+<tr><td>UVA</td><td>50.0</td></tr>
+<tr><td>UWM</td><td>60.8</td></tr>
+<tr><td>DreamZero</td><td>62.4</td></tr>
+<tr><td>Cosmos Policy</td><td>67.1</td></tr>
+<tr><td>World2Act</td><td>72.6</td></tr>
+<tr class="grp"><td colspan="2">Geometry-aware WAMs</td></tr>
+<tr><td>GAM</td><td>69.4</td></tr>
+<tr><td>DeVA</td><td>72.0</td></tr>
+<tr><td>SA-WAM</td><td><u>76.6</u></td></tr>
+<tr class="nc"><td>X-WAM†</td><td>79.2</td></tr>
+<tr class="grp"><td colspan="2">Geometry-aware VLAs</td></tr>
+<tr><td>GeoPredict</td><td>52.4</td></tr>
+<tr><td>SeeR-VLA</td><td>61.5</td></tr>
+<tr class="ours"><td>PointmapVLA (Ours)</td><td><b>78.2</b></td></tr></tbody>
+      </table></div>
+      <div class="table-wrap full"><table>
+<thead><tr><th>Task</th><th>Success (%)</th></tr></thead><tbody>
+<tr><td>CloseDoubleDoor</td><td>96.7<small>±1.2</small></td></tr>
+<tr><td>CloseDrawer</td><td>97.3<small>±1.2</small></td></tr>
+<tr><td>CloseSingleDoor</td><td>100.0<small>±0.0</small></td></tr>
+<tr><td>CoffeePressButton</td><td>92.7<small>±1.2</small></td></tr>
+<tr><td>CoffeeServeMug</td><td>85.3<small>±4.2</small></td></tr>
+<tr><td>CoffeeSetupMug</td><td>46.0<small>±2.0</small></td></tr>
+<tr><td>OpenDoubleDoor</td><td>68.0<small>±2.0</small></td></tr>
+<tr><td>OpenDrawer</td><td>93.3<small>±1.2</small></td></tr>
+<tr><td>OpenSingleDoor</td><td>78.7<small>±3.1</small></td></tr>
+<tr><td>PnPCabToCounter</td><td>65.3<small>±3.1</small></td></tr>
+<tr><td>PnPCounterToCab</td><td>66.7<small>±1.2</small></td></tr>
+<tr><td>PnPCounterToMicrowave</td><td>40.0<small>±7.2</small></td></tr>
+<tr><td>PnPCounterToSink</td><td>81.3<small>±2.3</small></td></tr>
+<tr><td>PnPCounterToStove</td><td>80.7<small>±6.1</small></td></tr>
+<tr><td>PnPMicrowaveToCounter</td><td>44.0<small>±3.5</small></td></tr>
+<tr><td>PnPSinkToCounter</td><td>84.7<small>±5.0</small></td></tr>
+<tr><td>PnPStoveToCounter</td><td>79.3<small>±1.2</small></td></tr>
+<tr><td>TurnOffMicrowave</td><td>100.0<small>±0.0</small></td></tr>
+<tr><td>TurnOffSinkFaucet</td><td>94.7<small>±1.2</small></td></tr>
+<tr><td>TurnOffStove</td><td>40.7<small>±8.3</small></td></tr>
+<tr><td>TurnOnMicrowave</td><td>88.7<small>±2.3</small></td></tr>
+<tr><td>TurnOnSinkFaucet</td><td>83.3<small>±1.2</small></td></tr>
+<tr><td>TurnOnStove</td><td>80.7<small>±5.0</small></td></tr>
+<tr><td>TurnSinkSpout</td><td>88.0<small>±2.0</small></td></tr>
+<tr class="ours"><td>Average</td><td><b>78.2</b><small>±0.9</small></td></tr></tbody>
+      </table></div>
+    </div>
+    <p class="metric-note">Average success (%) over the 24 atomic kitchen tasks, 300 demonstrations per task (paper Tables 11 and 12; right: PointmapVLA per task, mean ± std over three evaluation runs).
+      †X-WAM uses RoboCasa data during pretraining and is not directly comparable.</p>
+    </details>
+    <!-- /paper-tables -->
+
+    <h3 id="sim-rollouts-h">Simulation rollouts</h3>
+    <p class="metric-note">Successful evaluation episodes of the paper checkpoints. Pick a benchmark and a task.</p>
+    <div id="sim-rollouts" class="rollouts"><p class="visual-fallback">Rollout videos are being prepared.</p></div>
+
+    <h3>Real-world manipulation</h3>
+    <p>
+      We evaluate three tasks: <b>peg insertion, block stacking, and spatially instructed pick-and-place</b>. Unseen conditions
+      introduce changing illumination, new target heights, and a new external camera viewpoint, respectively.
+    </p>
+    <p>
+      PointmapVLA achieves <b>77% average success under seen conditions and 48% under unseen conditions</b>, compared with
+      <b>52% and 27%</b> for Pose-VLA, the strongest baseline on average. PointmapVLA performs best on each task under both conditions.
+    </p>
+    <figure>
+      <div class="figure-img"><img src="static/images/fig_realrobot.jpg" alt="Real-robot success rates per task, seen and unseen" loading="lazy"></div>
+      <figcaption><b>Real-robot results.</b> Success rate (%) per task under seen and unseen conditions, 20 rollouts per task and condition; all policies fine-tuned on the same demonstrations.</figcaption>
+    </figure>
+
+    <div class="rr" id="taskcards"></div>
+    <p class="metric-note" style="margin-top:12px">
+      Clips are qualitative examples, not the success-rate sample; playback is real time (1×). Baseline clips may come from a
+      different evaluation case of the same task and condition when no recording of the same case exists.
+    </p>
+    <script>
+    window.TASKS = [
+      {name: "Peg in hole", cond: "Unseen: lighting disturbance (ceiling light off, rotating coloured light)",
+       sr: {ours:[75,45], posevla:[50,30], pi05:[50,15], fp3:[55,15]},
+       seen: {instr: "Insert the arch style pillar into the matching hole.", ours: "seen_peg__B6__PEG-S-16", posevla: "seen_peg__posevla_3v__PEG-S-16", fp3: "seen_peg__fp3_2v_50k_wf__PEG-S-17", pi05: "seen_peg__B6__PEG-S-18"},
+       unseen: {instr: "Insert the arch style pillar into the matching hole.", ours: "unseen_peg__B5__PEG-U-15", posevla: "unseen_peg__posevla_3v__PEG-U-15", fp3: "unseen_peg__fp3_2v_50k_wf__PEG-U-15", pi05: "unseen_peg__pi05_3v_50k__PEG-U-15"}},
+      {name: "Stack blocks", cond: "Unseen: target tower heights not in the demonstrations",
+       sr: {ours:[75,50], posevla:[40,15], pi05:[30,20], fp3:[20,10]},
+       seen: {instr: "Place the red block on top of the blue tower.", ours: "seen_stack__B6__STK-S-02", posevla: "seen_stack__posevla_3v__STK-S-01", fp3: "seen_stack__fp3_2v_50k_wf__STK-S-02", pi05: "seen_stack__posevla_3v__STK-S-02"},
+       unseen: {instr: "Place the red block on top of the green tower.", ours: "unseen_stack__B6__STK-U-10", posevla: "unseen_stack__posevla_3v__STK-U-10", fp3: "unseen_stack__fp3_2v_50k_wf__STK-U-05", pi05: "unseen_stack__pi05_3v_50k__STK-U-10"}},
+      {name: "Pick and place", cond: "Unseen: a new external camera viewpoint replaces the left camera",
+       sr: {ours:[80,50], posevla:[65,35], pi05:[50,35], fp3:[15,10]},
+       seen: {instr: "Pick up the banana from the counter and place it in the left bowl.", ours: "seen_bowls__B6__PNP-S-04", posevla: "seen_bowls__posevla_3v__PNP-S-06", fp3: "seen_bowls__fp3_2v_50k_wf__PNP-S-01", pi05: "seen_bowls__posevla_3v__PNP-S-07"},
+       unseen: {instr: "Pick up the radish from the counter and place it in the middle bowl.", ours: "unseen_bowls__B5__PNP-U-07", posevla: "unseen_bowls__posevla_3v__PNP-U-07", fp3: "unseen_bowls__fp3_2v_50k_wf__PNP-U-02", pi05: "unseen_bowls__posevla_3v__PNP-U-13"}}
+    ];
+    </script>
+  </div>
+  <div class="wrap" id="occlusion">
+    <h3>Robustness to camera occlusion</h3>
+    <p>We also test pick-and-place while physically blocking external cameras.</p>
+
+    <div class="occl" id="occl"></div>
+    <script>
+    window.OCCL = [
+      {id: "none", label: "No occlusion", desc: "All three cameras see the scene: two fixed external cameras and the wrist camera. Same layout as the occluded cases (the Pose-VLA clip is from another seen pick-and-place layout).", sr: [80, 65],
+       ours: "seen_bowls__B6__PNP-S-04", posevla: "seen_bowls__posevla_3v__PNP-S-06", strip: {ours: "occl_none__B5__strip", posevla: "occl_none__posevla_3v__strip"}, blocked: [0, 0, 0], cams: "External camera view. Both policies run the same seen pick-and-place task.", instr: "Pick up the potato from the counter and place it in the left bowl."},
+      {id: "C", label: "Left view occluded", desc: "A box blocks the left external camera. The right external camera and the wrist camera remain.", sr: [65, 25],
+       ours: "occl_C__B5__stack", posevla: "occl_C__posevla_3v__stack", strip: {ours: "occl_C__B5__strip", posevla: "occl_C__posevla_3v__strip"}, blocked: [1, 0, 0], cams: "Top to bottom: left camera (blocked), right camera, wrist camera. Same case for both policies.", instr: "Pick up the potato from the counter and place it in the left bowl."},
+      {id: "D", label: "Both external views occluded", desc: "Boxes block both external cameras. Only the wrist camera still sees the scene.", sr: [50, 20],
+       ours: "occl_D__B5__stack", posevla: "occl_D__posevla_3v__stack", strip: {ours: "occl_D__B5__strip", posevla: "occl_D__posevla_3v__strip"}, blocked: [1, 1, 0], cams: "Top to bottom: left camera (blocked), right camera (blocked), wrist camera. Same case for both policies.", instr: "Pick up the potato from the counter and place it in the left bowl."}
+    ];
+    </script>
+
+    <h4 style="margin-top:30px">3D grounding under occlusion</h4>
+    <p class="metric-note">Asked for the target&rsquo;s 3D box, PointmapVLA (purple) keeps producing one from the remaining views; Pose-VLA (orange)
+      gives no box from an occluded camera. Pick an object and an occlusion setting; drag to rotate, scroll to zoom.</p>
+    <div id="occl-3d" class="corpus-pane"></div>
+  </div>
+</section>
+
+
+
+<!-- 7 -->
+<section id="why">
+  <div class="wrap">
+    <span class="kicker">05</span>
+    <h2>Analysis</h2>
+  </div>
+  <div class="wrap wide">
+    <!-- user (2026-10-19): the four analyses as a 2x2 grid of cards (takeaway, figure, detail) -->
+    <div class="ana-grid">
+      <div class="ana-card">
+        <h4>Robot-centric geometry</h4>
+        <p class="ana-take"><b>Robot-base coordinates improve manipulation.</b> Robot-base pointmaps reach <b>73.6%</b> on RoboCasa, above camera-frame pointmaps (71.2%) and RGB alone (67.9%).</p>
+        <div class="table-wrap compact paper"><table>
+          <thead><tr><th>Input</th><th>SR (%)</th></tr></thead>
+          <tbody>
+            <tr><td>None (RGB-only)</td><td>67.9<small>±0.1</small></td></tr>
+            <tr><td>Depth</td><td>70.0<small>±0.6</small></td></tr>
+            <tr><td>Depth + ray</td><td>70.9<small>±0.3</small></td></tr>
+            <tr><td>Pointmap (camera)</td><td><u>71.2</u><small>±0.9</small></td></tr>
+            <tr class="ours"><td>Pointmap (robot base)</td><td><b>73.6</b><small>±0.3</small></td></tr>
+          </tbody></table></div>
+        <p class="tab-src">Paper Table 6 · RoboCasa success rates (%)</p>
+        <p class="ana-detail">Depth and depth-plus-ray inputs also improve over RGB, but stay below robot-base pointmaps.</p>
+      </div>
+      <div class="ana-card">
+        <h4>Pointmap encoder initialization</h4>
+        <p class="ana-take"><b>Encoder initialization matters.</b> Initializing the pointmap encoder from the VLM’s pretrained RGB encoder performs best among the tested designs.</p>
+        <div class="table-wrap compact paper"><table>
+          <thead><tr><th>Encoder</th><th>Pretrained</th><th>RGB</th><th>Pointmap</th></tr></thead>
+          <tbody>
+            <tr><td>SigLIP2</td><td>&check;</td><td>65.3<small>±1.1</small></td><td>70.2<small>±0.6</small></td></tr>
+            <tr><td>DINOv3</td><td>&check;</td><td>66.8<small>±0.6</small></td><td><u>70.8</u><small>±0.7</small></td></tr>
+            <tr><td>MoGe-3</td><td>&check;</td><td>68.3<small>±0.6</small></td><td>69.8<small>±0.5</small></td></tr>
+            <tr class="sep"><td>Linear embed.</td><td>&times;</td><td>&ndash;</td><td>66.6<small>±0.5</small></td></tr>
+            <tr><td>Qwen3.5</td><td>&times;</td><td>&ndash;</td><td>63.0<small>±0.4</small></td></tr>
+            <tr class="ours"><td>Qwen3.5 (Ours)</td><td>&check;</td><td>&ndash;</td><td><b>73.6</b><small>±0.3</small></td></tr>
+          </tbody></table></div>
+        <p class="tab-src">Paper Table 5 · RoboCasa success rates (%); RGB / Pointmap = what the encoder is fed</p>
+        <p class="ana-detail">With identical auxiliary encoders, pointmap inputs also beat additional RGB inputs. These input and encoder comparisons use direct downstream fine-tuning without PointmapVLA pretraining.</p>
+      </div>
+      <div class="ana-card sup">
+        <h4>Spatial supervision</h4>
+        <p class="ana-take"><b>Spatial supervision complements action supervision.</b> Robot-only pretraining already helps; adding 3D spatial VQA raises success further in every evaluated setting.</p>
+        <div class="table-wrap compact paper"><table>
+          <thead><tr class="grp"><th rowspan="2">Pretrain</th><th colspan="2">Simulation</th><th colspan="2">Real world</th></tr>
+            <tr><th>RoboCasa</th><th>LIBERO-Plus</th><th>Seen</th><th>Unseen</th></tr></thead>
+          <tbody>
+            <tr><td>None</td><td>73.6<small>±0.3</small></td><td>82.6<small>±0.1</small></td><td>&ndash;</td><td>&ndash;</td></tr>
+            <tr><td>Robot</td><td><u>76.4</u><small>±0.1</small></td><td><u>88.2</u><small>±0.9</small></td><td><u>70</u></td><td><u>38</u></td></tr>
+            <tr class="ours"><td>Robot + VQA</td><td><b>78.2</b><small>±0.9</small></td><td><b>92.4</b><small>±0.3</small></td><td><b>77</b></td><td><b>48</b></td></tr>
+          </tbody></table></div>
+        <p class="tab-src">Paper Table 7 · success rates (%) across pretraining strategies</p>
+      </div>
+      <div class="ana-card">
+        <h4>Demonstration efficiency</h4>
+        <p class="ana-take">With <b>100 demonstrations per task</b>, PointmapVLA reaches <b>76.5%</b> on RoboCasa, above the RGB-only variant with <b>300</b> (71.6%).</p>
+        <svg class="demo-eff" viewBox="0 0 460 305" role="img" aria-label="RoboCasa success vs demonstrations per task: RGB-only 57.5, 68.9, 71.6; with pointmaps 68.3, 76.5, 78.2"><line x1="50" x2="410" y1="260.0" y2="260.0" class="gl"/><text x="42" y="264.0" class="ax" text-anchor="end">50%</text><line x1="50" x2="410" y1="186.7" y2="186.7" class="gl"/><text x="42" y="190.7" class="ax" text-anchor="end">60%</text><line x1="50" x2="410" y1="113.3" y2="113.3" class="gl"/><text x="42" y="117.3" class="ax" text-anchor="end">70%</text><line x1="50" x2="410" y1="40.0" y2="40.0" class="gl"/><text x="42" y="44.0" class="ax" text-anchor="end">80%</text><text x="70" y="282" class="ax" text-anchor="middle">30</text><text x="230" y="282" class="ax" text-anchor="middle">100</text><text x="390" y="282" class="ax" text-anchor="middle">300</text><text x="230" y="298" class="ax" text-anchor="middle">demonstrations per task</text><polyline points="70,205.0 230,121.4 390,101.6" class="ln rgb"/><polyline points="70,125.8 230,65.7 390,53.2" class="ln pm"/><line x1="70" x2="70" y1="132.8" y2="198.0" class="gap"/><text x="78" y="169.4" class="gapl">+10.8</text><circle cx="70" cy="205.0" r="5" class="pt rgb"/><text x="70" y="225.0" class="vl rgb" text-anchor="middle">57.5</text><circle cx="70" cy="125.8" r="5" class="pt pm"/><text x="70" y="114.8" class="vl pm" text-anchor="middle">68.3</text><line x1="230" x2="230" y1="72.7" y2="114.4" class="gap"/><text x="238" y="97.5" class="gapl">+7.6</text><circle cx="230" cy="121.4" r="5" class="pt rgb"/><text x="230" y="141.4" class="vl rgb" text-anchor="middle">68.9</text><circle cx="230" cy="65.7" r="5" class="pt pm"/><text x="230" y="54.7" class="vl pm" text-anchor="middle">76.5</text><line x1="390" x2="390" y1="60.2" y2="94.6" class="gap"/><text x="398" y="81.4" class="gapl">+6.6</text><circle cx="390" cy="101.6" r="5" class="pt rgb"/><text x="390" y="121.6" class="vl rgb" text-anchor="middle">71.6</text><circle cx="390" cy="53.2" r="5" class="pt pm"/><text x="390" y="42.2" class="vl pm" text-anchor="middle">78.2</text></svg>
+        <div class="legend"><span><i></i>RGB-only fine-tuning</span><span><i class="hi"></i>RGB + pointmap fine-tuning</span></div>
+        <p class="ana-detail">Both variants start from the same pointmap-pretrained checkpoint and share the fine-tuning schedule; the RGB-only variant removes pointmaps during fine-tuning and evaluation.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="bibtex">
+  <div class="wrap">
+    <h2>BibTeX</h2>
+    <div class="bibtex">
+      <button class="copy" type="button" onclick="var b=this;navigator.clipboard&&navigator.clipboard.writeText(b.nextElementSibling.textContent).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1500)})">Copy</button>
+<pre>TBD</pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">PointmapVLA &middot; Page design adapted from <a href="https://holiday-robot.github.io/FlashDexRetarget/">FlashDexRetarget</a>.</div>
+</footer>
+
+<script src="static/stage/frame.js"></script>
+<script src="static/js/pm-stage.js"></script>
+<script src="static/js/pm-pointmap-builder.js"></script>
+<script src="static/js/pm-pixel-inspector.js"></script>
+<script src="static/js/pm-fuse.js"></script>
+<script src="static/js/pm-fuse-anim.js"></script>
+<script src="static/episodes/episodes.js"></script>
+<script src="static/episodes/robocasa_1500/rgb.js"></script>
+<script src="static/scenes/manifest.js"></script>
+<script src="static/scenes/robot_manifest.js"></script>
+<script src="static/scenes/occl_manifest.js"></script>
+<script src="static/robot_eps/manifest.js" onerror="void 0"></script>
+<script src="static/js/pm-robot-ep.js"></script>
+<script src="static/videos/rollouts/manifest.js" onerror="void 0"></script>
+<script src="static/js/pm-scene.js"></script>
+<script>
+(function () {
+  var V = 'static/videos/';
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function vid(src) { var v = document.createElement('video'); v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata'; v.src = V + src + '.mp4'; return v; }
+  function playVisible(v) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+
+  /* lazy-load and autoplay looping clips when visible */
+  var io = new IntersectionObserver(function (es) { es.forEach(function (e) { var v = e.target;
+    if (e.isIntersecting) { if (v.dataset.src && !v.dataset.loaded) { v.src = v.dataset.src; v.dataset.loaded = '1'; } playVisible(v); }
+    else if (!v.paused) v.pause(); }); }, { rootMargin: '300px 0px' });
+  function observe(v) { io.observe(v); }
+
+  /* bar charts: width from data-v within [data-min, data-max] */
+  document.querySelectorAll('.bars').forEach(function (g) {
+    var max = +g.dataset.max, min = +(g.dataset.min || 0), unit = g.dataset.unit || '';
+    g.querySelectorAll('.bar').forEach(function (b) {
+      if (b.dataset.b) {   /* paired bar: grey baseline (data-a, optional) over the compared value (data-b) */
+        var tw = el('div', 'tracks'), vw = el('div', 'vals');
+        ['a', 'b'].forEach(function (k) { var x = b.dataset[k], tr = el('div', 'track ' + k), fl = el('div', 'fill');
+          if (x !== undefined) fl.style.width = Math.max(2, (+x - min) / (max - min) * 100) + '%'; else tr.classList.add('none');
+          tr.appendChild(fl); tw.appendChild(tr); vw.appendChild(el('div', 'val ' + k, x === undefined ? '' : (+x).toFixed(1) + unit)); });
+        b.appendChild(tw); b.appendChild(vw); return; }
+      var v = +b.dataset.v, t = el('div', 'track'), f = el('div', 'fill');
+      f.style.width = Math.max(2, (v - min) / (max - min) * 100) + '%'; t.appendChild(f);
+      b.appendChild(t); b.appendChild(el('div', 'val', v.toFixed(1) + unit));
+    });
+  });
+
+  /* real-world comparison: one task at a time, rotating every 10 s (dots show which; hover pauses). Seen | Unseen side by side,
+     each with all four policies in a 2x2 grid (ours first). */
+  (function () {
+    var root = document.getElementById('taskcards'), T = window.TASKS; if (!root || !T) return;
+    var MODELS = [['ours', 'PointmapVLA (ours)'], ['posevla', 'Pose-VLA'], ['pi05', 'π0.5'], ['fp3', 'FP3']], panes = [], dots = el('div', 'corpus-switch rr-switch');   /* task picker in the corpus-switch style; auto-advances until clicked */
+    var SUB = { 'Peg in hole': 'unseen: lighting disturbance', 'Stack blocks': 'unseen: new tower heights', 'Pick and place': 'unseen: new camera viewpoint' };
+    root.appendChild(dots);
+    T.forEach(function (t, i) { var pane = el('div', 'rr-pane'), same = t.seen.instr === t.unseen.instr; pane.hidden = true;   /* one shared prompt when both use the same instruction */
+      if (same) { var sp = el('p', 'rr-prompt rr-shared', '<span>Prompt</span>“' + t.seen.instr + '”'); pane.appendChild(sp); }
+      ['seen', 'unseen'].forEach(function (cnd, k) { var c = t[cnd], col = el('div', 'rr-col'), grid = el('div', 'rr-grid');
+        col.appendChild(el('div', 'rr-cond', k ? '<b>Unseen</b> · ' + t.cond.replace(/^Unseen: /, '') : '<b>Seen</b> · as in the demonstrations'));
+        if (!same) col.appendChild(el('p', 'rr-prompt', '<span>Prompt</span>“' + c.instr + '”'));
+        MODELS.forEach(function (m) { var cell = el('div', 'rr-cell' + (m[0] === 'ours' ? ' ours' : '')), box = el('div', 'rr-media'), ok = m[0] === 'ours';
+          if (c[m[0]]) { var v = vid(c[m[0]]); box.appendChild(v); observe(v); box.appendChild(el('span', 'rr-out ' + (ok ? 'ok' : 'fail'), ok ? 'Success' : 'Failure')); }
+          else box.appendChild(el('div', 'none', 'not recorded'));
+          cell.appendChild(box); cell.appendChild(el('div', 'rr-label', m[1])); grid.appendChild(cell); });
+        col.appendChild(grid); pane.appendChild(col); });
+      root.appendChild(pane); panes.push(pane);
+      var d = el('button', null, t.name + ' <small>' + (SUB[t.name] || '') + '</small>'); d.type = 'button'; d.onclick = function () { manual = true; go(i); }; dots.appendChild(d); });
+    root.appendChild(el('p', 'rr-foot', 'Success rates are in the figure above.'));
+    var cur = -1, hold = false, manual = false, timer;
+    function go(i) { cur = i; panes.forEach(function (p, j) { p.hidden = j !== i; }); [].forEach.call(dots.children, function (d, j) { d.classList.toggle('on', j === i); });
+      clearInterval(timer); if (!manual) timer = setInterval(function () { if (!hold) go((cur + 1) % T.length); }, 10000); }
+    root.addEventListener('mouseenter', function () { hold = true; }); root.addEventListener('mouseleave', function () { hold = false; });
+    go(0);
+  })();
+
+  /* occlusion: success-rate chart (paper Table 3), then one occluded case at a time (rotating every 10 s, dots, hover pauses):
+     PointmapVLA and Pose-VLA as strips of their three camera views (left | right | wrist) */
+  (function () {
+    var root = document.getElementById('occl'), O = window.OCCL; if (!root || !O) return;
+    var chart = el('div', 'oc-chart');
+    O.forEach(function (o) { var g = el('div', 'oc-grp'), bars = el('div', 'oc-bars');
+      [['ours', o.sr[0]], ['base', o.sr[1]]].forEach(function (m) { var bar = el('div', 'oc-bar ' + m[0]); bar.style.height = m[1] + '%'; bar.appendChild(el('span', null, m[1] + '%')); bars.appendChild(bar); });
+      g.appendChild(bars); g.appendChild(el('div', 'oc-lab', o.label)); chart.appendChild(g); });
+    var leg = el('div', 'oc-leg', '<i class="ours"></i>PointmapVLA (ours) <i class="base"></i>Pose-VLA <em>success over 20 rollouts</em>');
+    root.appendChild(leg); root.appendChild(chart);
+    var occ = O.filter(function (o) { return o.strip; }), dots = el('div', 'corpus-switch rr-switch'), panes = [], manual = false;
+    var SUB = { none: 'all three cameras', C: 'right + wrist cameras remain', D: 'only the wrist camera remains' };
+    root.appendChild(dots);
+    occ.forEach(function (o, i) { var pane = el('div', 'oc-pane'); pane.hidden = true;
+      pane.appendChild(el('p', 'oc-desc', o.desc + ' <i>“' + o.instr + '”</i>'));
+      var cap = el('div', 'oc-views'); ['left camera', 'right camera', 'wrist camera'].forEach(function (c, k) { cap.appendChild(el('span', o.blocked[k] ? 'off' : null, c + (o.blocked[k] ? ' · blocked' : ''))); }); pane.appendChild(cap);
+      [['ours', 'PointmapVLA (ours)', true, o.sr[0]], ['posevla', 'Pose-VLA', false, o.sr[1]]].forEach(function (m) {
+        var row = el('div', 'oc-row' + (m[2] ? ' ours' : '')), box = el('div', 'rr-media'), v = vid(o.strip[m[0]]);
+        box.appendChild(v); observe(v); box.appendChild(el('span', 'rr-out ' + (m[2] ? 'ok' : 'fail'), m[2] ? 'Success' : 'Failure'));
+        row.appendChild(box); row.appendChild(el('div', 'rr-label', m[1])); pane.appendChild(row); });
+      root.appendChild(pane); panes.push(pane);
+      var d = el('button', null, o.label + ' <small>' + (SUB[o.id] || '') + '</small>'); d.type = 'button'; d.onclick = function () { manual = true; go(i); }; dots.appendChild(d); });
+    var cur = 0, hold = false, timer;
+    function go(i) { cur = i; panes.forEach(function (p, j) { p.hidden = j !== i; }); [].forEach.call(dots.children, function (d, j) { d.classList.toggle('on', j === i); });
+      clearInterval(timer); if (!manual) timer = setInterval(function () { if (!hold) go((cur + 1) % occ.length); }, 10000); }
+    root.addEventListener('mouseenter', function () { hold = true; }); root.addEventListener('mouseleave', function () { hold = false; });
+    go(0);
+  })();
+
+  (function () {   /* occlusion grounding in 3D (exp45 scenes, build/export_occl_grounding.py): mounts when scrolled near */
+    var r = document.getElementById('occl-3d'); if (!r || !window.PMScene || !window.PMOCCL_GROUPS) return;
+    var go = function () { PMScene.mount(r, { groups: window.PMOCCL_GROUPS, base: 'static/scenes/', namedChips: true, hideQA: true, camsDefault: true }); };
+    if ('IntersectionObserver' in window) { var o = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { o.disconnect(); go(); } }, { rootMargin: '400px' }); o.observe(r); } else go();
+  })();
+  document.querySelectorAll('video.loop').forEach(observe);
+  if (window.PMStage && window.PMX) {
+    var problemRoot = document.getElementById('problem-stage'); problemRoot.replaceChildren();
+    PMStage.mount(problemRoot, window.PMX, window.PM_ACTION, { mode: 'problem', paired: true, tok: 'both', motionTitle: true, ghost: 0.55, star: window.PM_STAR, view: { az: 180, el: 20, t: [0.05, 0.0, 0.58], d: 2.05 } });
+    [['pm-stage-2a', 'both']].forEach(function (o) { var r = document.getElementById(o[0]); if (r) { r.replaceChildren(); PMStage.mount(r, window.PMX, window.PM_ACTION, { mode: 'problem', paired: true, pm: true, motionTitle: true, tok: o[1], star: window.PM_STAR, view: { az: 180, el: 20, t: [0.05, 0.0, 0.58], d: 2.05 } }); } });
+    (function () {   /* one shared timeline: the left player's control bar moves under both players and drives them; the right one mirrors
+                        its playback every frame; camera drags on either side are mirrored to the other */
+      var L = document.getElementById('problem-stage'), R = document.getElementById('pm-stage-2a'), slot = document.querySelector('.vs-bar'); if (!L || !R || !slot) return;
+      var bar = L.querySelector('.pms-bar'); if (bar) slot.appendChild(bar);
+      var hint = document.querySelector('.vs-hint'); if (hint && matchMedia('(hover: none)').matches) hint.textContent = 'Tap the pointmap to explore';
+      /* the diagram column is mirrored by CSS (top-down flow); swap the lines of each multi-line encoder label so they still read top to bottom */
+      [L, R].forEach(function (S) { S.querySelectorAll('.paired-left .pv-fuse svg').forEach(function (sv) { var by = {};
+        sv.querySelectorAll('text').forEach(function (tx) { (by[tx.getAttribute('x')] = by[tx.getAttribute('x')] || []).push(tx); });
+        Object.keys(by).forEach(function (x) { var g = by[x]; if (g.length < 2) return; var ys = g.map(function (tx) { return +tx.getAttribute('y'); }), lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+          g.forEach(function (tx, k) { tx.setAttribute('y', lo + hi - ys[k]); }); }); }); });
+      /* equal input-row heights, so the model box, action chunk and 3D view line up across the two players */
+      function eq() { var a = L.querySelector('.pv-inputs'), b = R.querySelector('.pv-inputs'); if (!a || !b) return; a.style.minHeight = b.style.minHeight = '';
+        if (matchMedia('(max-width: 900px)').matches) return; var h = Math.max(a.offsetHeight, b.offsetHeight) + 'px'; a.style.minHeight = b.style.minHeight = h; }
+      eq(); addEventListener('resize', eq); addEventListener('load', eq); setTimeout(eq, 800);
+      var la = null, ra = null;
+      (function sync() { var a = L.__pms, b = R.__pms;
+        if (a && b) { ['pf', 'c0', 'mode', 't0', 'fcur', 'playing', 'orbit', 'u'].forEach(function (f) { b[f] = a[f]; }); a.hold = b.hold;   /* exploring a pixel on the right holds both */
+          if (ra && (b.off.az !== ra[0] || b.off.el !== ra[1])) a.off = { az: b.off.az, el: b.off.el }; else b.off = { az: a.off.az, el: a.off.el };
+          la = [a.off.az, a.off.el]; ra = [b.off.az, b.off.el]; }
+        requestAnimationFrame(sync); })();
+    })();
+  }
+
+  if (window.PMFuse && window.PMX && document.getElementById('fuse-fig')) PMFuse.mount(document.getElementById('fuse-fig'), window.PMX);
+  if (window.PMFuseAnim && window.PMX && document.getElementById('fuse-anim')) PMFuseAnim.mount(document.getElementById('fuse-anim'), window.PMX);
+  /* section 2 subsections are always visible now: mount the pixel inspector and the construction stage directly */
+  if (window.PMX && window.PMPixelInspector && document.getElementById('pixel-inspector')) PMPixelInspector.mount(document.getElementById('pixel-inspector'), window.PMX);
+  var consDet = document.querySelector('#pointmap-construction details'), consDone = false;   /* builder mounts on first open (it needs a visible size) */
+  var bs = document.getElementById('build-stage'), cc = document.getElementById('construct-code');   /* each step's code appears with the step */
+  if (bs && cc) { var lines = cc.querySelectorAll('.ln'); function syncCode(k) { lines.forEach(function (l) { var s = +l.dataset.s; l.classList.toggle('shown', s <= k); l.classList.toggle('cur', s === k); }); } syncCode(0); bs.addEventListener('pmstep', function (e) { syncCode(e.detail); }); }
+  if (consDet) consDet.addEventListener('toggle', function () { if (!consDet.open) return; if (!consDone && window.PMX && window.PMPointmapBuilder) { var buildRoot = document.getElementById('build-stage'); buildRoot.replaceChildren(); PMPointmapBuilder.mount(buildRoot, window.PMX); consDone = true;
+      /* layout: step bar on top; left = 3D stage + controls, right = the step's explanation + equation, then the step-synced code */
+      var stepsEl = buildRoot.querySelector('.pmx-steps'), capt = stepsEl && stepsEl.querySelector('.capt'), side = document.getElementById('construct-side');
+      var grid = document.createElement('div'), L = document.createElement('div'), R = document.createElement('div'); grid.className = 'cons-grid'; L.className = 'cons-left'; R.className = 'cons-right';
+      ['.pmx-stage', '.builder-final-inputs', '.builder-controls', '.builder-representation'].forEach(function (s) { var n = buildRoot.querySelector(s); if (n) L.appendChild(n); });
+      if (capt) R.appendChild(capt); if (side) { side.hidden = false; R.appendChild(side); }
+      grid.appendChild(L); grid.appendChild(R); stepsEl.after(grid); } requestAnimationFrame(function () { window.dispatchEvent(new Event('resize')); }); });
+  (function () {   /* simulation rollout gallery: window.PMROLLOUTS = [[benchmark, [[task, [mp4, ...]], ...]], ...] (build/collect_rollouts.py).
+                       One strip per benchmark; the task dropdown (and, for LIBERO-Plus "suite · task · variation", the variation chips)
+                       filter what it shows. Too many clips to fit → they drift left in a loop; few (one task) → they sit still, larger. */
+    var R = window.PMROLLOUTS, root = document.getElementById('sim-rollouts'); if (!root || !R || !R.length) return;
+    function mk(tag, cls) { var n = document.createElement(tag); if (cls) n.className = cls; return n; }
+    root.innerHTML = ''; var bt = mk('div', 'tabs'), ctl = mk('div', 'rl-ctl'), sel = mk('select', 'rl-select'), st = mk('div', 'pms-chips rl-tasks rl-sub'), mq = mk('div', 'rl-marquee');
+    sel.setAttribute('aria-label', 'Task'); ctl.append(sel, st); root.append(bt, ctl, mq);
+    /* clips load and play only while on screen */
+    var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) { es.forEach(function (x) { var v = x.target;
+      if (x.isIntersecting) { if (!v.src) v.src = v.dataset.src; v.play().catch(function () {}); } else v.pause(); }); }, { root: mq }) : null;
+    var B;   /* current benchmark: {par: task names, kids: {task: [[name, clips], ...]}, vars: variation names or null, ti, vi} */
+    function leaf(n) { return n.slice(n.lastIndexOf(' · ') + 3); }
+    function show() { var t = [], all = B.ti < 0;
+      (all ? B.par.map(function (_, i) { return i; }) : [B.ti]).forEach(function (ti, n) { var K = B.kids[B.par[ti]], name = B.par[ti].split(' · '), task = name.length > 1 ? name.slice(1).join(' · ') : name[0];
+        if (!B.vars) { (all ? K[0][1].slice(0, 1) : K[0][1]).forEach(function (src) { t.push([src, all ? task : '', ti]); }); return; }
+        var ks = B.vi < 0 ? (all ? [K[n % K.length]] : K) : K.filter(function (g) { return leaf(g[0]) === B.vars[B.vi]; });
+        ks.forEach(function (g) { (all || B.vi < 0 ? g[1].slice(0, 1) : g[1]).forEach(function (src) { t.push([src, all ? task + (B.vi < 0 ? ' · ' + leaf(g[0]) : '') : (B.vi < 0 ? leaf(g[0]) : ''), ti]); }); }); });
+      if (io) io.disconnect(); mq.innerHTML = ''; var tr = mk('div', 'rl-track'); mq.appendChild(tr);
+      var drift = t.length > 3 && t.length * 228 > mq.clientWidth; mq.classList.toggle('still', !drift);
+      (drift ? t.concat(t) : t).forEach(function (x) { var f = mk('figure'), v = mk('video'), c = mk('figcaption');
+        v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'none'; v.dataset.src = x[0]; f.appendChild(v);
+        if (x[1]) { c.textContent = x[1]; f.appendChild(c); } if (all) { f.title = 'show this task'; f.onclick = function () { B.ti = x[2]; sel.value = x[2]; show(); }; }
+        tr.appendChild(f); if (io) io.observe(v); else { v.src = x[0]; v.autoplay = true; } });
+      tr.style.animationDuration = (t.length * 5) + 's';
+      if (B.vars) [].forEach.call(st.children, function (c, j) { c.classList.toggle('on', j - 1 === B.vi); }); }
+    function bench(bi) { [].forEach.call(bt.children, function (c, j) { c.classList.toggle('on', j === bi); });
+      var G = R[bi][1], two = G.length > 40, par = [], kids = {}, vars = [];
+      G.forEach(function (g) { var k = two ? g[0].slice(0, g[0].lastIndexOf(' · ')) : g[0]; if (!kids[k]) { kids[k] = []; par.push(k); } kids[k].push(g); if (two && vars.indexOf(leaf(g[0])) < 0) vars.push(leaf(g[0])); });
+      B = { par: par, kids: kids, vars: two ? vars.sort() : null, ti: -1, vi: -1 };
+      sel.innerHTML = ''; ['All tasks (' + par.length + ')'].concat(par).forEach(function (n, i) { var o = mk('option'); o.value = i - 1; o.textContent = n; sel.appendChild(o); }); sel.value = -1;
+      st.innerHTML = ''; st.hidden = !two; if (two) ['All variations'].concat(B.vars).forEach(function (n, i) { var c = mk('button'); c.type = 'button'; c.textContent = n; c.onclick = function () { B.vi = i - 1; show(); }; st.appendChild(c); });
+      show(); }
+    sel.onchange = function () { B.ti = +sel.value; show(); };
+    R.forEach(function (b, bi) { var c = mk('button'); c.type = 'button'; c.textContent = b[0]; c.onclick = function () { bench(bi); }; bt.appendChild(c); }); bench(0);
+    addEventListener('resize', function () { if (B) show(); });
+  })();
+  (function () {   /* corpus viewer: Robot data (DROID / InternData-M1, 10 scenes each) | 3D spatial VQA; each pane mounts on first show */
+    var mounted = {}, sw = document.querySelector('.corpus-switch'); if (!sw || !window.PMScene) return;
+    function open(g) { sw.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.g === g); });
+      document.getElementById('robot-scene').hidden = g !== 'robot'; document.getElementById('vqa-scene').hidden = g !== 'vqa';
+      if (mounted[g]) return; mounted[g] = true;
+      if (g === 'robot' && window.PMRobotEp && window.PMROBOT_EPS) PMRobotEp.mount(document.getElementById('robot-scene'), window.PMROBOT_EPS);   /* playable episodes */
+      else if (g === 'robot' && window.PMROBOT_GROUPS) PMScene.mount(document.getElementById('robot-scene'), { groups: window.PMROBOT_GROUPS, base: 'static/scenes/' });
+      if (g === 'vqa' && window.PMSCENES_ORDER) PMScene.mount(document.getElementById('vqa-scene'), { order: window.PMSCENES_ORDER, base: 'static/scenes/' }); }
+    sw.querySelectorAll('button').forEach(function (b) { b.onclick = function () { open(b.dataset.g); }; }); open('robot');
+  })();
+})();
+</script>
+</body>
+</html>

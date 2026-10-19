@@ -1,0 +1,1 @@
+window.PMSCENES_ORDER=[["m1", "InternData-M1"], ["robointer", "RoboInter-VQA"], ["robo2vlm", "Robo2VLM"], ["wilddet3d", "WildDet3D"], ["hispatial_o365", "HiSpatial (Objects365)"], ["hispatial_ca1m", "HiSpatial (CA-1M)"]];
